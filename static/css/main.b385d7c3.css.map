@@ -1,0 +1,1 @@
+{"version":3,"sources":["index.css"],"names":[],"mappings":"AAAA,iBACI,sBAAyB","file":"static/css/main.b385d7c3.css","sourcesContent":["[data-reactroot]  {\n    height: 100vh !important;\n}\n\n\n// WEBPACK FOOTER //\n// ./src/index.css"],"sourceRoot":""}
