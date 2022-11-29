@@ -148,13 +148,13 @@ export default class App extends React.Component {
         this.bang()
     }
 
-    addEmployee = (name, title, stream, reportsTo, employee, github, startDate, type) => {
-        this.props.data.addEmployee(name, title, stream, reportsTo, employee, github, startDate, type)
+    addEmployee = (name, title, stream, reportsTo, employee, github, startDate, type, vacancy, backfill) => {
+        this.props.data.addEmployee(name, title, stream, reportsTo, employee, github, startDate, type, vacancy, backfill)
         this.bang()
     }
 
-    editEmployee = (id, name, title, stream, reportsTo, employee, github, startDate, type) => {
-        this.props.data.editEmployee(id, name, title, stream, reportsTo, employee, github, startDate, type)
+    editEmployee = (id, name, title, stream, reportsTo, employee, github, startDate, type, vacancy, backfill) => {
+        this.props.data.editEmployee(id, name, title, stream, reportsTo, employee, github, startDate, type, vacancy, backfill)
         this.bang()
     }
 

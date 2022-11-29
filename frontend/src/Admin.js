@@ -16,10 +16,10 @@ import IconButton from 'material-ui/IconButton';
 import EditIcon from 'material-ui/svg-icons/editor/mode-edit';
 import {Table, TableHeader, TableHeaderColumn} from 'material-ui/Table';
 
-import {flattenTeamHierarchyExcluding, KIND, STREAM, TYPE} from './state'
+import {flattenTeamHierarchyExcluding, KIND, TYPE} from './state'
 import {TableBody, TableRow, TableRowColumn} from "material-ui";
 
-
+let STREAM = {}
 
 function debounce(func, wait, immediate) {
     var timeout;
@@ -145,7 +145,7 @@ class TeamDetails extends React.Component {
     }
 
     render() {
-        let {root, team, reparentTeam, removeFromTeam, changeHeadcount, changeBackfills, removeTeam, employees, setLead} = this.props
+        let {root, team, reparentTeam, removeFromTeam, removeTeam, employees, setLead} = this.props
 
         if (!team) {
             return null
@@ -176,46 +176,6 @@ class TeamDetails extends React.Component {
                         <MenuItem key={t.id} value={t.id} primaryText={t.name}/>
                     ))}
                 </SelectField>
-
-                <Table size="small" selectable={false}>
-                    <TableHeader displaySelectAll={false}>
-                        <TableRow selectable={false}>
-                            <TableHeaderColumn>Stream</TableHeaderColumn>
-                            <TableHeaderColumn>Vacancies</TableHeaderColumn>
-                            <TableHeaderColumn>Backfills</TableHeaderColumn>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody displayRowCheckbox={false}>
-                        {[...new Set(Object.keys(team.vacancies).concat(upstreamEmlpoyeesStreams))].sort().map(s => (
-                        <TableRow selectable={false}>
-                            <TableRowColumn>{s}</TableRowColumn>
-                            <TableRowColumn>
-                                <TextField onChange={(_, val) => changeHeadcount(team.id, s, val)}
-                                           value={team.vacancies[s] !== undefined ? team.vacancies[s] : ""}/>
-                            </TableRowColumn>
-                            <TableRowColumn>
-                                <TextField onChange={(_, val) => changeBackfills(team.id, s, val)}
-                                           value={team.backfills[s] !== undefined ? team.backfills[s] : ""}/>
-                            </TableRowColumn>
-                        </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-
-                {Object.values(STREAM).map(val => (
-                    <SelectField
-                        key={val}
-                        floatingLabelText={(val.toLowerCase().charAt(0).toUpperCase() + val.toLowerCase().slice(1)+" lead").replace("_", " ")}
-                        fullWidth={true}
-                        value={team[val.toLowerCase()+"Lead"] ? team[val.toLowerCase()+"Lead"].id : null}
-                        onChange={(_, __, i) => setLead(team.id, i, val.toLowerCase()+"Lead")}
-                    >
-                        <MenuItem value={null} primaryText="" />
-                        {employees.map(t => (
-                            <MenuItem key={t.id} value={t.id} primaryText={t.name}/>
-                        ))}
-                    </SelectField>
-                ))}
 
                 <Subheader>Members</Subheader>
                 <List>
@@ -314,7 +274,7 @@ class EmployeeList extends React.Component {
                     </ListItem>
                     {employees.filter(e => {
                         return e.memberOf !== exclude &&
-                            e.name.toLowerCase().search(this.state.search.toLowerCase()) !== -1 &&
+                            (e.name || "").toLowerCase().search(this.state.search.toLowerCase()) !== -1 &&
                             (!this.state.filter || !e.memberOf)
                     }).map(e => {
                         const team = teams.find(t => t.id === e.memberOf)
@@ -345,7 +305,13 @@ class EmployeeList extends React.Component {
                             sub = `${e.startDate} - ${sub}`
                         }
 
-                        return (<ListItem primaryText={e.name + ` #${e.number}`} key={e.id} onClick={() => exclude && addToTeam(e.id)}
+                        let lab = e.name + ` #${e.number}`
+
+                        if (!e.name) {
+                            lab = `[HC] ` + e.title
+                        }
+
+                        return (<ListItem primaryText={lab} key={e.id} onClick={() => exclude && addToTeam(e.id)}
                                           secondaryText={sub}
                                           rightIconButton={<IconButton tooltip="edit" onClick={() => {
                                               this.setState({addPersonOpen: true, editedPerson: e})
@@ -387,7 +353,7 @@ class AddPersonDialog extends React.Component {
             title: "",
             github: "",
             number: "",
-            stream: Object.keys(STREAM)[0],
+            stream: "",
             reportsTo: null,
             type: Object.keys(TYPE)[0],
             startDate: "",
@@ -402,16 +368,21 @@ class AddPersonDialog extends React.Component {
     };
 
     submit = () => {
-        const {id, name, title, stream, reportsTo, number, github, type, startDate} = this.state
+        const {id, name, title, stream, reportsTo, number, github, type, startDate, vacancy, backfill} = this.state
 
-        if (!name || !title || !stream || !type) {
+        if (!title || !stream || !type) {
+            return
+        }
+
+        if (!name && !vacancy && !backfill) {
+            // require name if not a backfil or vacancy
             return
         }
 
         if (id) {
-            this.props.editEmployee(id, name, title, stream, reportsTo, number, github, startDate, type);
+            this.props.editEmployee(id, name, title, stream, reportsTo, number, github, startDate, type, vacancy, backfill);
         } else {
-            this.props.addEmployee(name, title, stream, reportsTo, number, github, startDate, type);
+            this.props.addEmployee(name, title, stream, reportsTo, number, github, startDate, type, vacancy, backfill);
         }
 
         this.handleClose()
@@ -478,20 +449,13 @@ class AddPersonDialog extends React.Component {
                     this.setState({number: val})
                 }} value={this.state.number}/><br/>
 
-                <SelectField
-                    onChange={(_, __, val) => {
-                        this.setState({stream: val})
-                    }}
-                    fullWidth={true}
+                <TextField
                     value={this.state.stream}
                     floatingLabelText={"Stream"}
-
-                >
-                    {Object.keys(STREAM).map(val => (
-                        <MenuItem key={val} value={val} primaryText={val}/>
-                    ))}
-                </SelectField>
-
+                    onChange={(_, val) => {
+                        this.setState({stream: val})
+                    }}
+                />
 
                 <SelectField
                     onChange={(_, __, val) => {
@@ -505,6 +469,20 @@ class AddPersonDialog extends React.Component {
                         <MenuItem key={val} value={val} primaryText={val}/>
                     ))}
                 </SelectField>
+
+                <Checkbox
+                    label="vacancy"
+                    onCheck={(_, val) => {
+                        this.setState({vacancy: val})
+                    }}
+                />
+
+                <Checkbox
+                    label="backfill"
+                    onCheck={(_, val) => {
+                        this.setState({backfill: val})
+                    }}
+                />
 
                 <SelectField
                     onChange={(_, __, val) => {
@@ -589,22 +567,7 @@ class AddTeamDialog extends React.Component {
                     <RadioButtonGroup name="kind" onChange={(_, val) => {
                         this.setState({kind: val})
                     }} labelPosition={"right"} valueSelected={this.state.kind}>
-                        <RadioButton
-                            value={KIND.SQUAD}
-                            label={KIND.SQUAD}
-                        />
-                        <RadioButton
-                            value={KIND.TRIBE}
-                            label={KIND.TRIBE}
-                        />
-                        <RadioButton
-                            value={KIND.TEAM}
-                            label={KIND.TEAM}
-                        />
-                        <RadioButton
-                            value={KIND.UNIT}
-                            label={KIND.UNIT}
-                        />
+                        {Object.keys(KIND).map((s,i) => <RadioButton key={"team_add_kind_"+i} value={s} label={s} />)}
                     </RadioButtonGroup>
                     <SelectField
                         onChange={(_, __, val) => {

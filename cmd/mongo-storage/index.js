@@ -1,4 +1,27 @@
-{
+const express = require("express")
+const app = express()
+const cors = require('cors')
+
+app.use(cors())
+app.use(express.json())
+
+//The Index Route
+app.get("/org", (request, response) => {
+    // send the posts array as a json response
+    response.json(org)
+})
+
+app.post("/org", (request, response) => {
+    console.log(request.body)
+    response.end()
+})
+
+// Turn on the server
+app.listen(4000, () => console.log("Server Listening on Port 4000"))
+
+
+
+const org = {
   "employees": [
     {
       "id": "1",

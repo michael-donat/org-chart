@@ -8,7 +8,8 @@ import {
     TableRow,
     TableRowColumn,
 } from 'material-ui/Table'
-import {STREAM} from "./state";
+
+let STREAM = {}
 
 function flattenTeamsFn(parents = []) {
     return function flattenTeams(r, a) {

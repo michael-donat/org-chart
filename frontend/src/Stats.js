@@ -3,8 +3,9 @@ import {Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxi
 
 import {List, ListItem} from 'material-ui/List'
 
-import {STREAM, flattenTeamHierarchyExcluding} from './state'
+import {flattenTeamHierarchyExcluding} from './state'
 
+let STREAM = {}
 
 export default class Stats extends React.Component {
     render() {
@@ -107,17 +108,20 @@ const TwoLevelPieChart = ({teams}) => {
 
     teams.forEach(t => {
         t.members.forEach(m => {
-            streams[m.stream].employees += 1
-            max = max < streams[m.stream].employees ? streams[m.stream].employees : max
+            if (!streams[m.stream]) {
+                streams[m.stream] = {employees: 0, vacancies: 0, backfills: 0}
+            }
+            let key = 'employees'
+            if (m.vacancy)  {
+                key = 'vacancies'
+            }
+            if (m.backfill)  {
+                key = 'backfills'
+            }
+            streams[m.stream][key] += 1
+            max = max < streams[m.stream][key] ? streams[m.stream][key] : max
         })
 
-        Object.keys(t.vacancies).forEach(st => {
-            streams[st].vacancies += t.vacancies[st]
-        })
-
-        Object.keys(t.backfills).forEach(st => {
-            streams[st].backfills += t.backfills[st]
-        })
     })
 
     const data = []

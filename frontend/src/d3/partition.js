@@ -29,40 +29,41 @@ export default (nodes) => {
         const color = d3.scaleOrdinal(d3.schemeCategory20);
 
         const label = (d, always) => {
-            if (d.id === 'technology_board') {
-                return "Technology Board"
+
+            let lbl = []
+
+            if (d.vacancy) {
+                lbl.push("[VAC]")
             }
-            if (d.id === 'product_board') {
-                return "Product Board"
+
+            if (d.backfill) {
+                lbl.push("[BKF]")
             }
+
             if (d.type === 'team') {
                 return `${d.name} ${d.group_actual}/${d.group}`
             }
 
             if (d.type === "TEMP") {
-                return "[TMP] "+d.name
+                lbl.push("[TMP]")
             }
 
             if (d.type === "CONTRACTOR") {
-                return "[CON] "+d.name
+                lbl.push("[CON]")
             }
 
             if (d.type === "AGENCY_CONTRACTOR") {
-                return "[AGN] "+d.name
+                lbl.push("[AGN]")
             }
 
-            if (d.kind === 'vacancy') {
-                return "[HC] "+d.name
+            if (!d.name && d.title) {
+                lbl.push(d.title)
+            } else {
+                lbl.push(d.name)
             }
 
-            if (d.kind === 'backfill') {
-                return "[BF] "+d.name
-            }
-
-            if (d.name) {
-                return d.name
-            }
-            return always ? d.title : ''
+            return lbl.join(' ')
+            //return always ? d.title : ''
         }
 
         const arc = d3.arc()
@@ -136,10 +137,11 @@ export default (nodes) => {
                 .attr("d", arc)
                 .style("fill", function (d) {
 
-                    if ((d.data.kind === 'vacancy' || d.data.kind === 'backfill') && d.data.name.endsWith("ENGINEERING") ) {
+                    if (d.data.vacancy) {
                         return 'url(#smallDot)'
                     }
-                    if (d.data.kind === 'vacancy' || d.data.kind === 'backfill') {
+
+                    if (d.data.backfill) {
                         return 'url(#diagonalHatch)'
                     }
 
@@ -147,7 +149,7 @@ export default (nodes) => {
                         //return 'gray'
                     }
 
-                    return color(label((d.children ? d : d.parent).data, true));
+                    return color(label((d.parent ? d.parent : d).data, true));
                 })
                 .attr("stroke", "black")
                 .attr("stoke-width", 0.2)

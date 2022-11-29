@@ -25,3 +25,5 @@ dest
 dist
 
 test.data.json
+
+.idea

@@ -1,18 +1,10 @@
 import URL from 'url-parse'
+import {v4 as uuidv4} from 'uuid'
 
 import Couch from "davenport";
 
-export let STREAM = {
-    ENGINEERING: 'ENGINEERING',
-    OPERATIONS: 'OPERATIONS',
-    PRODUCT: 'PRODUCT',
-    PORTFOLIO: 'PORTFOLIO',
-    DATA: 'DATA',
-    DESIGN: 'DESIGN',
-}
-
 export let KIND = {
-    EMPLOYEE: 'EMPLOYEE',
+    ORGANIZATION: 'ORGANIZATION',
     DEPARTMENT: 'DEPARTMENT',
     TRIBE: 'TRIBE',
     SQUAD: 'SQUAD',
@@ -27,8 +19,13 @@ export let TYPE = {
     AGENCY_CONTRACTOR: 'AGENCY_CONTRACTOR',
 }
 
+let STREAM = {}
+
 class Employee {
-    constructor(id, name, title, reportsTo, memberOf, stream, number, github, startDate, type) {
+    constructor({
+                    id, name, title, reportsTo, memberOf,
+                    stream, number, github, startDate, type, vacancy, backfill
+                } = {}) {
         this.id = id
         this.name = name
         this.title = title
@@ -39,19 +36,25 @@ class Employee {
         this.github = github
         this.startDate = startDate || ""
         this.type = type || TYPE.EMPLOYEE
+        this.vacancy = vacancy
+        this.backfill = backfill
+    }
+}
+
+class Lead {
+    constructor({id, stream}) {
+        this.id = id
+        this.stream = stream
     }
 }
 
 class Team {
-    constructor(id, name, kind, parent, vacancies, techLead, productLead, description, backfills) {
+    constructor({id, name, kind, parent, leads, description} = {}) {
         this.id = id
         this.name = name
         this.kind = kind
         this.parent = parent
-        this.vacancies = vacancies || {}
-        this.backfills = backfills || {}
-        this.techLead = techLead
-        this.productLead = productLead
+        this.leads = leads;
         this.description = description
     }
 }
@@ -113,7 +116,7 @@ class Organisation {
                 let team = teamsById[employee.memberOf]
 
                 for (const val of Object.keys(STREAM)) {
-                    const kk = val.toLowerCase()+"Lead";
+                    const kk = val.toLowerCase() + "Lead";
                     if (team[kk] === employee.id) {
                         team = teamsById[team.parent]
                         break
@@ -169,7 +172,6 @@ class Organisation {
 
         this.teams.forEach(t => {
             if (t.parent) {
-
                 if (!hierarchy[t.parent]) {
                     throw new Error(`Error while building team hierarchy, parent ${t.parent} not found for team ${t.name}`)
                 }
@@ -179,7 +181,7 @@ class Organisation {
 
             // assign leads
             Object.keys(STREAM).forEach(val => {
-                const kk = val.toLowerCase()+"Lead"
+                const kk = val.toLowerCase() + "Lead"
                 if (t[kk] && employeesById[t[kk]]) {
                     hierarchy[t.id][kk] = Object.assign({}, employeesById[t[kk]])
                 }
@@ -235,60 +237,54 @@ class Organisation {
             const data = JSON.parse(jsonString)
 
             this.parseData(data)
-        } catch(err) {
+        } catch (err) {
             alert("JSON.parse error, check console")
         }
     }
 
     parseData(data) {
+
+        if (!data) {
+            data = {}
+            const org = new Team({
+                id: "org",
+                kind: KIND.ORGANIZATION,
+                description: "New Organization",
+                name: "New Organization",
+                "parent": null
+            })
+            const root = new Employee({
+                id: "ceo",
+                name: "CEO",
+                title: "CEO",
+                type: TYPE.EMPLOYEE,
+                stream: "Management",
+                memberOf: org.id,
+                children: []
+            })
+            data.employees = [root]
+            data.teams = [org]
+        }
+
         this.employees = data.employees.map(e => Object.assign(new Employee(), e))
         this.teams = data.teams.map(e => {
             const o = Object.assign(new Team(), e)
-            if (o.techLead) {
-                o.engineeringLead = o.techLead
+            if (o.leads) {
+                const leads = [];
+                o.leads.forEach(l => {
+                    leads.push(Object.assign(new Lead(), l))
+                })
+                o.leads = leads;
             }
-            delete o.techLead
             return o
         })
-        this.rootEmployee = data.rootEmployee || "damon_petta";
-
-        if (data.streams) {
-            for (const val of data.streams) {
-                STREAM[val.toUpperCase()] = val.toUpperCase()
-            }
-        }
-
-        if (data.types) {
-            for (const val of data.types) {
-                TYPE[val.toUpperCase()] = val.toUpperCase()
-            }
-        }
-
-        if (data.kinds) {
-            for (const val of data.kinds) {
-                KIND[val.toUpperCase()] = val.toUpperCase()
-            }
-        }
-    }
-
-    changeHeadcount(team, stream, headcount) {
-        headcount = parseInt(headcount, 10)
-        if (isNaN(headcount)) {
-            headcount = undefined
-        }
-        this.teams.find(t => t.id === team).vacancies[stream] = headcount
-    }
-
-    changeBackfills(team, stream, headcount) {
-        headcount = parseInt(headcount, 10)
-        if (isNaN(headcount)) {
-            headcount = undefined
-        }
-        this.teams.find(t => t.id === team).backfills[stream] = headcount
+        this.rootEmployee = data.rootEmployee || "ceo";
     }
 
     addNewTeam(name, kind, parent, description) {
-        this.teams.push(new Team(makeTeamId(name, kind), name, kind, parent, undefined, undefined, undefined, description))
+        this.teams.push(new Team({
+            id: makeTeamId(name, kind), name, kind, parent, description
+        }))
     }
 
     changeTeamName(team, newName) {
@@ -303,37 +299,53 @@ class Organisation {
 
         const parsedURL = new URL(url);
 
-        if (!parsedURL.protocol.startsWith("couch")) {
-            alert("Unsupported storage, try couchdb://")
-            return
+
+
+        const chartData = {
+            employees: this.employees,
+            teams: this.teams,
+            streams: Object.values(STREAM),
+            kinds: Object.values(KIND),
+            types: Object.values(TYPE),
+            rootEmployee: this.rootEmployee,
         }
 
         if (parsedURL.protocol.startsWith("couchdbs")) {
             parsedURL.protocol = "https:"
+
+            const couch = new Couch(parsedURL.protocol + "//" + parsedURL.host, parsedURL.pathname.substr(1))
+
+            await couch.put(
+                "chart",
+                chartData,
+                this.documentRevision,
+            )
+                .then(res => {
+                    this.documentRevision = res.rev
+                })
+                .catch(err => {
+                    alert("failed to save data: " + err.message)
+                })
+
         } else {
-            parsedURL.protocol = "http:"
+
+            fetch('url', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(chartData)
+            }).then(res => {
+                console.log("saved to ", url)
+            })
+            .catch(err => {
+                alert("failed to save data: " + err.message)
+            });
+
         }
 
-        const couch = new Couch(parsedURL.protocol+"//"+parsedURL.host, parsedURL.pathname.substr(1))
 
-        await couch.put(
-            "chart",
-            {
-                employees: this.employees,
-                teams: this.teams,
-                streams: Object.values(STREAM),
-                kinds: Object.values(KIND),
-                types: Object.values(TYPE),
-                rootEmployee: this.rootEmployee,
-            },
-            this.documentRevision,
-        )
-        .then(res => {
-            this.documentRevision  = res.rev
-        })
-        .catch(err => {
-            alert("failed to save data: " + err.message)
-        })
     }
 
     async loadData(url) {
@@ -368,7 +380,7 @@ class Organisation {
                     parsedURL.protocol = "http:"
                 }
 
-                const couch = new Couch(parsedURL.protocol+"//"+parsedURL.host, parsedURL.pathname.substr(1))
+                const couch = new Couch(parsedURL.protocol + "//" + parsedURL.host, parsedURL.pathname.substr(1))
 
                 data = await couch.get("chart").then(data => {
                     this.documentRevision = data._rev
@@ -391,7 +403,7 @@ class Organisation {
 
             return this.parseData(data)
 
-        } catch(err) {
+        } catch (err) {
             alert("failed to load: " + err.message)
         }
 
@@ -417,11 +429,16 @@ class Organisation {
         this.teams = this.teams.filter(t => t.id !== team)
     }
 
-    addEmployee(name, title, stream, reportsTo, employee, github, startDate, type) {
-        this.employees.push(new Employee(makeEmployeeId(name), name, title, reportsTo, undefined, stream, employee, github, startDate === "" ? null : startDate, type))
+    addEmployee(name, title, stream, reportsTo, employee, github, startDate, type, vacancy, backfill) {
+        const emp = new Employee({
+            id: makeEmployeeId(name), name, title, reportsTo,
+            stream, employee, github, startDate: startDate === "" ? null : startDate, type,
+            vacancy, backfill
+        })
+        this.employees.push(emp)
     }
 
-    editEmployee(id, name, title, stream, reportsTo, employeeNumber, github, startDate, type) {
+    editEmployee(id, name, title, stream, reportsTo, employeeNumber, github, startDate, type, vacancy, backfill) {
         const employee = this.employees.find(e => e.id === id)
 
         employee.name = name
@@ -432,7 +449,8 @@ class Organisation {
         employee.github = github
         employee.startDate = startDate === "" ? null : startDate
         employee.type = type
-
+        employee.vacancy = vacancy
+        employee.backfill = backfill
     }
 
     removeEmployee(id) {
@@ -462,13 +480,14 @@ function makeTeamId(name, kind) {
 }
 
 function makeEmployeeId(name) {
-    return `${name}`.toLowerCase().replace(/[^a-z0-9]+/, '_')
+    // return `${name}`.toLowerCase().replace(/[^a-z0-9]+/, '_')
+    return uuidv4()
 }
 
-const data = new Organisation([],[])
+const data = new Organisation([], [])
 
 if (process.env.NODE_ENV === "development") {
-    const d = require("./fixtures/example.json")
+    const d = true ? require("./fixtures/example.json") : null
     data.parseData(d)
 }
 
@@ -481,28 +500,11 @@ export function _moveNodesToChildren(team, showMembers, showVacancies, notRecurs
     }
 
     if (showMembers) {
-        team.children = team.children.concat(team.members)
-    }
-
-    if (showVacancies) {
-        for (let stream in team.vacancies) {
-            for (let n = 1; n <=team.vacancies[stream]; n++) {
-                team.children.push({
-                    name: `${stream}`,
-                    kind: 'vacancy',
-                    id: `vacancy_${team.id}_${stream}_${n}`
-                })
-            }
+        let children = team.members
+        if (!showVacancies) {
+            children = children.filter(c => !c.vacancy && !c.backfill)
         }
-        for (let stream in team.backfills) {
-            for (let n = 1; n <=team.backfills[stream]; n++) {
-                team.children.push({
-                    name: `${stream}`,
-                    kind: 'backfill',
-                    id: `backfill_${team.id}_${stream}_${n}`
-                })
-            }
-        }
+        team.children = children
     }
 
     return team
@@ -510,7 +512,7 @@ export function _moveNodesToChildren(team, showMembers, showVacancies, notRecurs
 
 const findLeadUpFromFor = (team, teams, employee) => {
 
-    const searchKey = employee.stream.toLowerCase()+"Lead"
+    const searchKey = employee.stream.toLowerCase() + "Lead"
 
     let currentTeam = team
 
@@ -518,7 +520,7 @@ const findLeadUpFromFor = (team, teams, employee) => {
         return currentTeam[searchKey]
     }
 
-    while(currentTeam.parent && teams[currentTeam.parent]) {
+    while (currentTeam.parent && teams[currentTeam.parent]) {
         currentTeam = teams[currentTeam.parent]
 
         if (currentTeam[searchKey]) {
