@@ -16,7 +16,7 @@ import IconButton from 'material-ui/IconButton';
 import EditIcon from 'material-ui/svg-icons/editor/mode-edit';
 import {Table, TableHeader, TableHeaderColumn} from 'material-ui/Table';
 
-import {flattenTeamHierarchyExcluding, KIND, TYPE} from './state'
+import {flattenTeamHierarchyExcluding, getEmployeeLabel, KIND, TYPE} from './state'
 import {TableBody, TableRow, TableRowColumn} from "material-ui";
 
 let STREAM = {}
@@ -74,6 +74,7 @@ export default class Admin extends React.Component {
                 <Box pb={0} w={1 / 3} style={{alignSelf: "flex-start"}}>
                     <TeamDetails root={this.props.data.get('teams').toJS()} team={this.state.team}
                                  {...this.props.actions}
+                                streams={this.props.data.get('streams')}
                                  employees={this.props.data.get('employees').toJS()}
                     />
                 </Box>
@@ -114,7 +115,12 @@ class TeamDetails extends React.Component {
     constructor(props) {
         super(props)
         this.state = {
-            name: ""
+            name: "",
+            newLead: {
+                stream: "",
+                employee: "",
+                team: "",
+            }
         }
 
         this.debouncedChangeTeamName = debounce(props.changeTeamName, 500, false)
@@ -124,7 +130,12 @@ class TeamDetails extends React.Component {
     componentWillReceiveProps(props) {
         this.setState({
             name: props.team ? props.team.name : "",
-            description: props.team && props.team.description ? props.team.description : ""
+            description: props.team && props.team.description ? props.team.description : "",
+            newLead: {
+                stream: "",
+                employee: "",
+                team: "",
+            }
         })
     }
 
@@ -144,14 +155,32 @@ class TeamDetails extends React.Component {
         this.debouncedChangeTeamDescription(id, val)
     }
 
+    onLeadSelection = (id, val, a, b) => {
+        this.setState({
+            newLead: {
+                employee: val,
+                team: id,
+                stream: this.state.newLead.stream
+            }
+        })
+    }
+
+    onLeadStreamChange = (id, val) => {
+        this.setState({
+            newLead: {
+                stream: val,
+                team: id,
+                employee: this.state.newLead.employee
+            }
+        })
+    }
+
     render() {
-        let {root, team, reparentTeam, removeFromTeam, removeTeam, employees, setLead} = this.props
+        let {root, team, reparentTeam, removeFromTeam, removeTeam, employees, setLead, removeLead, streams} = this.props
 
         if (!team) {
             return null
         }
-
-        let upstreamEmlpoyeesStreams = Object.values(STREAM)
 
         return (
 
@@ -185,6 +214,65 @@ class TeamDetails extends React.Component {
                                   secondaryText={e.title}/>
                     ))}
                 </List>
+
+                <Subheader>Leaders</Subheader>
+
+                <List>
+                    {(Object.entries(team.leads) || {}).map(entry => {
+
+                        const [stream, employeeId] = entry
+
+                        const employee = employees.find(e => e.id == employeeId)
+
+                        if (!employee) return
+
+                        return (
+                            <ListItem onClick={() => removeLead(team.id, stream)} primaryText={getEmployeeLabel(employee)} key={employeeId}
+                                      secondaryText={stream}/>
+                        )
+                    })}
+                </List>
+
+                <Subheader>Add leaders</Subheader>
+
+                <TextField
+                    value={this.state.newLead.stream}
+                    floatingLabelText={"Stream"}
+                    fullWidth={false}
+                    multiLine={false}
+                    onChange={(_, val) => {
+                        this.onLeadStreamChange(team.id, val)
+                    }}
+                />
+
+                <SelectField
+                    floatingLabelText="Lead"
+                    fullWidth={false}
+                    onChange={(_,__, i) => this.onLeadSelection(team.id, i)}
+                    value={this.state.newLead.employee}
+                >
+                    <MenuItem key={"_leader_none"} value={""} primaryText={""}/>
+                    {employees.map(e => (
+                        <MenuItem primaryText={getEmployeeLabel(e)} key={e.id} value={e.id} />
+                    ))}
+                </SelectField>
+
+                <FlatButton fullWidth={false} label={"Add Lead"} secondary onClick={() => {
+
+                    if (!this.state.newLead.employee || !this.state.newLead.stream || !this.state.newLead.team) {
+                        console.error("missing lead data for submit")
+                        return false
+                    }
+
+                    setLead(this.state.newLead.team, this.state.newLead.employee, this.state.newLead.stream)
+
+                    this.setState({newLead: {
+                            stream: "",
+                            employee: "",
+                            team: "",
+                        }})
+                }}/>
+
                 <TextField
                     value={this.state.description}
                     floatingLabelText={"Description"}
@@ -196,6 +284,7 @@ class TeamDetails extends React.Component {
                         this.onDescriptionChange(team.id, val)
                     }}
                 />
+
                 <RaisedButtom fullWidth={true} label={"Delete"} secondary onClick={() => {
                     if (!window.confirm("Ya?\nAll employees who are part of this team will be unassigned.\nAll child teams will be assigned to parent.")) {
                         return
@@ -431,26 +520,26 @@ class AddPersonDialog extends React.Component {
 
                 <TextField floatingLabelText={"Full Name"} onChange={(_, val) => {
                     this.setState({name: val})
-                }} value={this.state.name}/><br/>
+                }} value={this.state.name || ""}/><br/>
 
                 <TextField floatingLabelText={"Title"} onChange={(_, val) => {
                     this.setState({title: val})
-                }} value={this.state.title}/><br/>
+                }} value={this.state.title || ""}/><br/>
 
                 <TextField floatingLabelText={"Start Date"} onChange={(_, val) => {
                     this.setState({startDate: val})
-                }} value={this.state.startDate}/><br/>
+                }} value={this.state.startDate || ""}/><br/>
 
                 <TextField floatingLabelText={"GitHub"} onChange={(_, val) => {
                     this.setState({github: val})
-                }} value={this.state.github}/><br/>
+                }} value={this.state.github || ""}/><br/>
 
                 <TextField floatingLabelText={"Employee #"} onChange={(_, val) => {
                     this.setState({number: val})
-                }} value={this.state.number}/><br/>
+                }} value={this.state.number || ""}/><br/>
 
                 <TextField
-                    value={this.state.stream}
+                    value={this.state.stream || ""}
                     floatingLabelText={"Stream"}
                     onChange={(_, val) => {
                         this.setState({stream: val})
@@ -472,6 +561,7 @@ class AddPersonDialog extends React.Component {
 
                 <Checkbox
                     label="vacancy"
+                    checked={this.state.vacancy}
                     onCheck={(_, val) => {
                         this.setState({vacancy: val})
                     }}
@@ -479,6 +569,7 @@ class AddPersonDialog extends React.Component {
 
                 <Checkbox
                     label="backfill"
+                    checked={this.state.backfill}
                     onCheck={(_, val) => {
                         this.setState({backfill: val})
                     }}
@@ -494,7 +585,7 @@ class AddPersonDialog extends React.Component {
                 >
                     <MenuItem key={"_report-none"} value={"--inherit--"} primaryText={""}/>
                     {this.props.employees.map(t => (
-                        <MenuItem key={t.id} value={t.id} primaryText={t.name}/>
+                        <MenuItem key={t.id} value={t.id} primaryText={getEmployeeLabel(t)}/>
                     ))}
                 </SelectField>
 

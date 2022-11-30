@@ -168,6 +168,11 @@ export default class App extends React.Component {
         this.bang()
     }
 
+    removeLead = (team, stream) => {
+        this.props.data.removeLead(team, stream)
+        this.bang()
+    }
+
     render() {
 
         return (
@@ -198,10 +203,11 @@ export default class App extends React.Component {
                                       editEmployee: this.editEmployee,
                                       removeEmployee: this.removeEmployee,
                                       setLead: this.setLead,
+                                      removeLead: this.removeLead
                                   }}/>
                     </Tab>
                     <Tab label="STATS">
-                        <Stats data={this.state.admin.get('data')}/>
+                       <Stats data={this.state.admin.get('data')}/>
                     </Tab>
                     <Tab label="DATA">
                         <div>

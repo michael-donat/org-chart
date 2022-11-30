@@ -1,8 +1,6 @@
 import URL from 'url-parse'
 import {v4 as uuidv4} from 'uuid'
 
-import Couch from "davenport";
-
 export let KIND = {
     ORGANIZATION: 'ORGANIZATION',
     DEPARTMENT: 'DEPARTMENT',
@@ -41,12 +39,7 @@ class Employee {
     }
 }
 
-class Lead {
-    constructor({id, stream}) {
-        this.id = id
-        this.stream = stream
-    }
-}
+
 
 class Team {
     constructor({id, name, kind, parent, leads, description} = {}) {
@@ -54,7 +47,7 @@ class Team {
         this.name = name
         this.kind = kind
         this.parent = parent
-        this.leads = leads;
+        this.leads = leads || {};
         this.description = description
     }
 }
@@ -93,6 +86,8 @@ class Organisation {
     reportingHierarchy() {
 
         const root = this.rootEmployee;
+
+
 
         const teamsById = {}
 
@@ -134,7 +129,11 @@ class Organisation {
         Object.values(employeesById).forEach(employee => {
             if (employee.id === root) return;
 
+            if (!employee.reportsTo) return;
+
             const lead = employeesById[employee.reportsTo]
+
+            if (!lead) return
 
             lead.children.push(employee)
         })
@@ -269,16 +268,19 @@ class Organisation {
         this.employees = data.employees.map(e => Object.assign(new Employee(), e))
         this.teams = data.teams.map(e => {
             const o = Object.assign(new Team(), e)
-            if (o.leads) {
-                const leads = [];
-                o.leads.forEach(l => {
-                    leads.push(Object.assign(new Lead(), l))
-                })
-                o.leads = leads;
-            }
             return o
         })
         this.rootEmployee = data.rootEmployee || "ceo";
+
+        this.streams = {}
+
+        this.employees.forEach(e => {
+            if (e.stream) {
+                this.streams[e.stream] = e.stream
+            }
+        })
+
+
     }
 
     addNewTeam(name, kind, parent, description) {
@@ -299,53 +301,28 @@ class Organisation {
 
         const parsedURL = new URL(url);
 
-
-
         const chartData = {
             employees: this.employees,
             teams: this.teams,
-            streams: Object.values(STREAM),
+            streams: Object.values(this.streams),
             kinds: Object.values(KIND),
             types: Object.values(TYPE),
             rootEmployee: this.rootEmployee,
         }
 
-        if (parsedURL.protocol.startsWith("couchdbs")) {
-            parsedURL.protocol = "https:"
-
-            const couch = new Couch(parsedURL.protocol + "//" + parsedURL.host, parsedURL.pathname.substr(1))
-
-            await couch.put(
-                "chart",
-                chartData,
-                this.documentRevision,
-            )
-                .then(res => {
-                    this.documentRevision = res.rev
-                })
-                .catch(err => {
-                    alert("failed to save data: " + err.message)
-                })
-
-        } else {
-
-            fetch('url', {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(chartData)
-            }).then(res => {
-                console.log("saved to ", url)
-            })
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(chartData)
+        }).then(res => {
+            console.log("saved to ", url)
+        })
             .catch(err => {
                 alert("failed to save data: " + err.message)
             });
-
-        }
-
-
     }
 
     async loadData(url) {
@@ -358,53 +335,19 @@ class Organisation {
             let dataURL;
             let persistURL = undefined;
 
-            // couchdb://user:pass@0.0.0.0:5984/it-org-chart
+            const response = await fetch(url)
+            data = await response.json()
 
-            if (parsedURL.protocol.startsWith("couch")) {
-                // couch URL
-
-                persistURL = url
-
-                const loadURL = new URL(url);
-
-                loadURL.auth = ""
-                loadURL.password = ""
-                loadURL.username = ""
-
-                dataURL = loadURL.toString()
-
-
-                if (parsedURL.protocol.startsWith("couchdbs")) {
-                    parsedURL.protocol = "https:"
-                } else {
-                    parsedURL.protocol = "http:"
-                }
-
-                const couch = new Couch(parsedURL.protocol + "//" + parsedURL.host, parsedURL.pathname.substr(1))
-
-                data = await couch.get("chart").then(data => {
-                    this.documentRevision = data._rev
-                    return {employees: [], teams: [], ...data}
-                }).catch(err => {
-                    alert("failed to load data: " + err.message)
-                    return data = {"employees": [], "teams": []}
-                })
-
-
-            } else {
-                const response = await fetch(url)
-                data = await response.json()
-
-                dataURL = url
-            }
+            dataURL = url
 
             localStorage.setItem("dataURL", dataURL)
-            localStorage.setItem("persistURL", persistURL)
+            localStorage.setItem("persistURL", dataURL)
 
             return this.parseData(data)
 
         } catch (err) {
-            alert("failed to load: " + err.message)
+            console.error(err)
+            alert("failed to load chart, check console for errors")
         }
 
     }
@@ -470,8 +413,12 @@ class Organisation {
         this.employees = this.employees.filter(e => e.id !== id)
     }
 
+    removeLead(team, stream) {
+        delete this.teams.find(t => t.id === team).leads[stream]
+    }
+
     setLead(team, lead, stream) {
-        this.teams.find(t => t.id === team)[stream] = lead
+        this.teams.find(t => t.id === team).leads[stream] = lead
     }
 }
 
@@ -504,9 +451,8 @@ export function _moveNodesToChildren(team, showMembers, showVacancies, notRecurs
         if (!showVacancies) {
             children = children.filter(c => !c.vacancy && !c.backfill)
         }
-        team.children = children
+        team.children.push(...children)
     }
-
     return team
 }
 
@@ -544,4 +490,36 @@ export const flattenTeamHierarchyExcluding = (teamId) => {
     }
 
     return fn
+}
+
+export const getEmployeeLabel = (employee) => {
+       const lbl = []
+
+        if (employee.vacancy) {
+            lbl.push("[VAC]")
+        }
+
+        if (employee.backfill) {
+            lbl.push("[BKF]")
+        }
+
+        if (employee.type === "TEMP") {
+            lbl.push("[TMP]")
+        }
+
+        if (employee.type === "CONTRACTOR") {
+            lbl.push("[CON]")
+        }
+
+        if (employee.type === "AGENCY_CONTRACTOR") {
+            lbl.push("[AGN]")
+        }
+
+        if (!employee.name && employee.title) {
+            lbl.push(employee.title)
+        } else {
+            lbl.push(employee.name)
+        }
+
+        return lbl.join(' ')
 }
