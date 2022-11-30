@@ -107,23 +107,31 @@ class Organisation {
                 return
             }
 
-            if (!employee.reportsTo) {
-                let team = teamsById[employee.memberOf]
+            // if the current team has a team lead of the same stream assing it
+            // but not if the lead is the same person
 
-                for (const val of Object.keys(STREAM)) {
-                    const kk = val.toLowerCase() + "Lead";
-                    if (team[kk] === employee.id) {
-                        team = teamsById[team.parent]
-                        break
-                    }
-                }
-
-                if (!team) {
-                    employee.reportsTo = root
-                } else {
-                    employee.reportsTo = findLeadUpFromFor(team, teamsById, employee) || root
-                }
+            if (employee.reportsTo) {
+                return
             }
+
+            const team = teamsById[employee.memberOf]
+
+            const streamLead = team.leads[employee.stream]
+
+            if (streamLead && employee.id != streamLead) {
+                employee.reportsTo = streamLead
+                return
+            }
+
+            // if the same employee is a leader, or there is no leader we need to search up
+            employee.reportsTo = findLeadUpFromFor(team, teamsById, employee) || root
+
+            if ((employee.name || "").endsWith("Bremen")) {
+                console.log("Bremen", employee.name, employee.reportsTo)
+            }
+
+            return
+
         })
 
         Object.values(employeesById).forEach(employee => {
@@ -458,19 +466,19 @@ export function _moveNodesToChildren(team, showMembers, showVacancies, notRecurs
 
 const findLeadUpFromFor = (team, teams, employee) => {
 
-    const searchKey = employee.stream.toLowerCase() + "Lead"
+    const searchKey = employee.stream
 
     let currentTeam = team
 
-    if (currentTeam[searchKey]) {
-        return currentTeam[searchKey]
+    if (currentTeam.leads[searchKey] && currentTeam.leads[searchKey] != employee.id) {
+        return currentTeam.leads[searchKey]
     }
 
     while (currentTeam.parent && teams[currentTeam.parent]) {
         currentTeam = teams[currentTeam.parent]
 
-        if (currentTeam[searchKey]) {
-            return currentTeam[searchKey]
+        if (currentTeam.leads[searchKey]) {
+            return currentTeam.leads[searchKey]
         }
     }
 

@@ -227,7 +227,7 @@ class TeamDetails extends React.Component {
                         if (!employee) return
 
                         return (
-                            <ListItem onClick={() => removeLead(team.id, stream)} primaryText={getEmployeeLabel(employee)} key={employeeId}
+                            <ListItem onClick={() => removeLead(team.id, stream)} primaryText={getEmployeeLabel(employee)} key={stream+employeeId}
                                       secondaryText={stream}/>
                         )
                     })}
